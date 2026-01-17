@@ -25,7 +25,11 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 # ===============================
 
 load_dotenv()
-client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+
+# Check for API key
+if not os.getenv("GOOGLE_API_KEY"):
+    st.error("❌ GOOGLE_API_KEY environment variable is not set. Please configure it in your deployment platform's secrets/settings.")
+    st.stop()
 
 st.set_page_config(
     page_title="Universal Document Chat (RAG)",
@@ -169,6 +173,9 @@ Question:
 """
 
     try:
+        # Initialize client here to avoid module-level initialization issues
+        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
+        
         response = client.models.generate_content(
             model="models/gemini-flash-latest",
             contents=prompt
