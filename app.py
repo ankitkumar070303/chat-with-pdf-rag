@@ -21,20 +21,38 @@ from langchain_community.embeddings import HuggingFaceEmbeddings
 
 
 # ===============================
-# Environment Setup
+# Environment Setup (SAFE)
 # ===============================
 
 load_dotenv()
 
-# Check for API key
-if not os.getenv("GOOGLE_API_KEY"):
-    st.error("❌ GOOGLE_API_KEY environment variable is not set. Please configure it in your deployment platform's secrets/settings.")
+def get_api_key():
+    """
+    Priority:
+    1. Streamlit Cloud Secrets
+    2. Local .env file
+    """
+    try:
+        return st.secrets["GOOGLE_API_KEY"]
+    except Exception:
+        return os.getenv("GOOGLE_API_KEY")
+
+API_KEY = get_api_key()
+
+if not API_KEY:
+    st.error("❌ GOOGLE_API_KEY not found. Add it to Streamlit Secrets (cloud) or .env (local).")
     st.stop()
+
+
+# ===============================
+# Streamlit UI
+# ===============================
 
 st.set_page_config(
     page_title="Universal Document Chat (RAG)",
     layout="wide"
 )
+
 st.title("📂 Chat with Your Documents (RAG)")
 
 
@@ -126,7 +144,7 @@ if uploaded_file:
             text = read_file(uploaded_file)
 
             if not text.strip():
-                st.error("❌ No readable text found")
+                st.error("❌ No readable text found in the document.")
                 st.stop()
 
             chunks = split_text(text)
@@ -144,15 +162,10 @@ with st.form("qa_form"):
     submitted = st.form_submit_button("Ask")
 
 if submitted and question and st.session_state.vectorstore:
-    retriever = st.session_state.vectorstore.as_retriever(
-        search_kwargs={"k": 3}
-    )
-
+    retriever = st.session_state.vectorstore.as_retriever(search_kwargs={"k": 3})
     docs = retriever.invoke(question)
 
-    context = "\n\n".join(
-        doc.page_content[:800] for doc in docs
-    )
+    context = "\n\n".join(doc.page_content[:800] for doc in docs)
 
     cache_key = (question, context)
 
@@ -173,9 +186,8 @@ Question:
 """
 
     try:
-        # Initialize client here to avoid module-level initialization issues
-        client = genai.Client(api_key=os.getenv("GOOGLE_API_KEY"))
-        
+        client = genai.Client(api_key=API_KEY)
+
         response = client.models.generate_content(
             model="models/gemini-flash-latest",
             contents=prompt
@@ -187,13 +199,8 @@ Question:
         st.write(response.text)
 
     except ClientError as e:
-        error_code = getattr(e, "code", None)
-
-        if error_code == 429:
-            st.warning("⚠️ API quota exceeded.")
+        if getattr(e, "code", None) == 429:
+            st.warning("⚠️ API quota exceeded. Please wait and try again.")
             time.sleep(60)
-            st.stop()
         else:
             st.error(f"❌ Gemini API error: {e}")
-            st.stop()
-
